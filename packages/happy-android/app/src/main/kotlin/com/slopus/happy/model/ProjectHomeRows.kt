@@ -44,6 +44,10 @@ data class ProjectHomeEntry(
     val working: Boolean,
     val blocked: Boolean,
     val live: Boolean,
+    /** How [PinnedFolders] names the project; null when it can't be pinned (no computer or path). */
+    val pin: Pin? = null,
+    /** In the Pinned section at the top, which a long press reorders. */
+    val pinned: Boolean = false,
 )
 
 /** The row that ends a project's worktrees: `Show all N` while some are held back, `Show fewer` once out. */
@@ -58,7 +62,7 @@ data class WorktreeToggle(
     val blocked: Boolean,
 )
 
-enum class ProjectHomeSection { Bots, Tasks, Projects }
+enum class ProjectHomeSection { Pinned, Bots, Tasks, Projects }
 
 @Immutable
 sealed interface ProjectHomeRow {
@@ -156,7 +160,8 @@ private fun toWorktree(project: ProjectGroupData, workspace: ProjectWorkspaceGro
     )
 }
 
-private fun projectRows(project: ProjectGroupData, expanded: Set<String>): List<ProjectHomeRow> {
+/** A project's card and its worktrees; [cardOnly] (a pinned card being dragged) leaves the worktrees out. */
+private fun projectRows(project: ProjectGroupData, expanded: Set<String>, pinned: Boolean = false, cardOnly: Boolean = false): List<ProjectHomeRow> {
     val checkouts = project.workspaces.mapNotNull { toWorktree(project, it) }
     if (checkouts.isEmpty()) return emptyList()
     val primary = checkouts.find { it.workspaceId == "" }
@@ -176,9 +181,16 @@ private fun projectRows(project: ProjectGroupData, expanded: Set<String>): List<
                 working = own.working,
                 blocked = own.blocked,
                 live = isLive(ownTabs),
+                pin = project.pin,
+                pinned = pinned,
             ),
         ),
     )
+    if (cardOnly) {
+        // Its worktrees tuck under the card, so the stem has nothing to drop to.
+        val card = rows.single() as ProjectHomeRow.ProjectCard
+        return listOf(card.copy(project = card.project.copy(worktreeCount = 0)))
+    }
     val isExpanded = project.id in expanded
     val shown = if (isExpanded) worktrees else worktrees.take(WORKTREE_PREVIEW_COUNT)
     val hidden = worktrees.drop(shown.size)
@@ -213,10 +225,13 @@ private fun projectsByMachine(items: List<SessionListItem>, machineName: (String
 }
 
 /**
- * buildProjectHomeRows: each computer, then its bots, its tasks, then its projects (a
- * card per project with its worktrees under it). Happy Agent computers lead,
- * then the most recently worked on; chats that name no computer go last. The
- * archive trails behind its toggle as the flat, date-grouped tail.
+ * buildProjectHomeRows: the pinned projects first, in the person's order,
+ * from every computer (#1707); then each computer, then its bots, its tasks,
+ * then its other projects (a card per project with its worktrees under it).
+ * Happy Agent computers lead, then the most recently worked on; chats that
+ * name no computer go last. The archive trails behind its toggle as the
+ * flat, date-grouped tail. While a pinned card is [dragging], the pinned
+ * projects are their cards alone.
  */
 fun buildProjectHomeRows(
     items: List<SessionListItem>,
@@ -225,6 +240,8 @@ fun buildProjectHomeRows(
     expanded: Set<String>,
     hasArchivedSessions: Boolean = false,
     archiveHidden: Boolean = true,
+    pins: PinnedFolders = PinnedFolders(),
+    dragging: Boolean = false,
 ): List<ProjectHomeRow> {
     val collator = Collator.getInstance()
     val sections = LinkedHashMap<String?, MachineSection>()
@@ -251,9 +268,15 @@ fun buildProjectHomeRows(
             section.lastActivityAt = maxOf(section.lastActivityAt, session.lastActivityAt)
         }
     }
+    val pinned = mutableListOf<Pair<Int, ProjectGroupData>>()
     for ((machineId, projects) in projectsByMachine(items, ::nameOf, collator)) {
         val section = sectionFor(machineId)
         for (project in projects) {
+            val rank = pins.rankOf(project.pin)
+            if (rank != null) {
+                pinned += rank to project
+                continue
+            }
             val built = projectRows(project, expanded)
             if (built.isEmpty()) continue
             section.projects.addAll(built)
@@ -268,6 +291,11 @@ fun buildProjectHomeRows(
             .thenComparator { a, b -> collator.compare(a.machineName, b.machineName) },
     )
     val rows = mutableListOf<ProjectHomeRow>()
+    val pinnedRows = pinned.sortedBy { it.first }.flatMap { (_, project) -> projectRows(project, expanded, pinned = true, cardOnly = dragging) }
+    if (pinnedRows.isNotEmpty()) {
+        rows.add(ProjectHomeRow.Section("pinned", ProjectHomeSection.Pinned))
+        rows.addAll(pinnedRows)
+    }
     for (section in ordered) {
         if (section.bots.isEmpty() && section.tasks.isEmpty() && section.projects.isEmpty()) continue
         val key = section.machineId ?: "unknown"

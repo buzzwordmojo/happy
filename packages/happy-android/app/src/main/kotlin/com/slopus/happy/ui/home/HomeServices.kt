@@ -133,6 +133,9 @@ class HomeServices private constructor(private val graph: AppGraph) {
     /** Unread chats and the chat on screen ([SessionViewingEffect]); per account, in memory. */
     val reads = SessionReadState()
 
+    /** The home list's pins (#1707): a swipe toggles one; a long press drags the Pinned section's order. */
+    val pins = ProjectPins(graph.settings.settings) { transform -> graph.settings.change(transform) }
+
     val list = HomeListModel(
         snapshots = snapshots,
         settings = graph.settings.settings,
@@ -140,6 +143,7 @@ class HomeServices private constructor(private val graph: AppGraph) {
         unreadSessionIds = reads.unreadSessionIds,
         archivingSessionIds = archiver.archiving,
         scope = scope,
+        pinPreview = pins.preview,
     )
 
     private val update = MutableStateFlow<String?>(null)

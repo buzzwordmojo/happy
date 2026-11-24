@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.home
 
+
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.Immutable
@@ -7,6 +8,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import com.slopus.happy.model.Pin
 import com.slopus.happy.model.WorkspaceOrigin
 
 /**
@@ -28,6 +30,14 @@ class HomeListCallbacks(
     val onProjectMenu: (projectName: String, origin: WorkspaceOrigin) -> Unit,
     /** A finger landed on a session's row, before it is a tap (useSessionPressHandlers' onPressIn). */
     val onPressDown: (sessionId: String) -> Unit = {},
+    /** A project card's swipe action: pin it to the top, or unpin it (#1707). */
+    val onTogglePin: (Pin) -> Unit = {},
+    /** A long press lifted a pinned card. */
+    val onPinDragStart: () -> Unit = {},
+    /** The held card passed another: it now goes at this index among the pins. */
+    val onPinDragTo: (Pin, index: Int) -> Unit = { _, _ -> },
+    /** The held card was let go. */
+    val onPinDragEnd: () -> Unit = {},
 )
 
 /**

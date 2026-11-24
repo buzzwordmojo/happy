@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.home
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import com.slopus.happy.ui.migration.MigrationPath
 
 import com.slopus.happy.ui.tablet.LocalSidebarHome
@@ -282,6 +284,14 @@ fun HomeList(
 ) {
     val colors = HappyTheme.colors
     val flat = state.grouping == SessionListGrouping.Flat
+    val pinDrag = remember(listState, callbacks) { PinDrag(listState, callbacks) }
+    pinDrag.order = remember(state.rows) {
+        state.rows.mapNotNull { row ->
+            val card = (row as? HomeRow.Project)?.row as? ProjectHomeRow.ProjectCard ?: return@mapNotNull null
+            card.project.pin?.takeIf { card.project.pinned }?.let { card.key to it }
+        }
+    }
+    CompositionLocalProvider(LocalPinDrag provides pinDrag) {
     LazyColumn(
         state = listState,
         modifier = Modifier
@@ -303,17 +313,20 @@ fun HomeList(
         }
         if (carded) {
             items(state.cards, key = { it.key }, contentType = { (it.row as? HomeRow.Project)?.row?.let { row -> row::class } ?: it.row::class }) { entry ->
-                HomeCardItem(entry, callbacks, selectedSessionId)
+                Box(pinnedCardItem(entry.key)) { HomeCardItem(entry, callbacks, selectedSessionId) }
             }
         } else items(state.rows, key = { it.key }, contentType = { it::class }) { row ->
-            when (row) {
-                is HomeRow.Chat -> FlatSessionRow(row.row, row.showBorder, row.archived, callbacks, selected = row.row.session.id == selectedSessionId)
-                is HomeRow.ArchiveToggle -> ArchiveToggleRow(row.hidden, row.banded, callbacks)
-                is HomeRow.DayHeader -> DayHeaderRow(row.title, flat)
-                is HomeRow.Project -> ProjectHomeRowContent(row.row, callbacks)
+            Box(pinnedCardItem(row.key)) {
+                when (row) {
+                    is HomeRow.Chat -> FlatSessionRow(row.row, row.showBorder, row.archived, callbacks, selected = row.row.session.id == selectedSessionId)
+                    is HomeRow.ArchiveToggle -> ArchiveToggleRow(row.hidden, row.banded, callbacks)
+                    is HomeRow.DayHeader -> DayHeaderRow(row.title, flat)
+                    is HomeRow.Project -> ProjectHomeRowContent(row.row, callbacks)
+                }
             }
         }
         item(key = "bottom", contentType = "bottom") { bottomSpacer() }
+    }
     }
 }
 

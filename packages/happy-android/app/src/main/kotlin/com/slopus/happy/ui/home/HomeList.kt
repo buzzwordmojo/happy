@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import com.slopus.happy.model.DayTitle
 import com.slopus.happy.model.FlatSessionRowData
 import com.slopus.happy.model.HomeEmptyState
+import com.slopus.happy.model.PinnedFolders
 import com.slopus.happy.model.ProjectHomeRow
 import com.slopus.happy.model.ProjectWorktree
 import com.slopus.happy.model.projectWorktreesBySession
@@ -31,6 +32,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.scan
@@ -154,6 +156,10 @@ data class HomeListInputs(
     val expandedProjects: Set<String>,
     val unreadSessionIds: Set<String>,
     val archivingSessionIds: Set<String>,
+    /** The account's pins, or a drag's order while a pinned card is held. */
+    val pins: PinnedFolders = PinnedFolders(),
+    /** A pinned card is being dragged: the pinned projects are their cards alone. */
+    val dragging: Boolean = false,
 )
 
 /**
@@ -175,7 +181,7 @@ fun deriveHomeList(inputs: HomeListInputs, zone: ZoneId, today: LocalDate): Home
     val online = choices.count { it.online }
     val rows = when (inputs.grouping) {
         SessionListGrouping.Flat -> flatRows(visible, hasArchived, inputs.archiveHidden)
-        SessionListGrouping.Project -> buildProjectHomeRows(visible, machines, "", inputs.expandedProjects, hasArchived, inputs.archiveHidden)
+        SessionListGrouping.Project -> buildProjectHomeRows(visible, machines, "", inputs.expandedProjects, hasArchived, inputs.archiveHidden, inputs.pins, inputs.dragging)
             .map(HomeRow::Project)
     }
     return HomeListState(
@@ -247,16 +253,20 @@ class HomeListModel(
     scope: CoroutineScope,
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
     zone: () -> ZoneId = ZoneId::systemDefault,
+    /** A pinned card's drag: its order in place of the stored one until it drops. */
+    pinPreview: Flow<PinnedFolders?> = flowOf(null),
 ) {
+    private data class Layout(val grouping: SessionListGrouping, val archiveHidden: Boolean, val pins: PinnedFolders, val dragging: Boolean)
+
     val state: StateFlow<HomeListState?> = combine(
         snapshots,
-        settings.map { it.sessionListGrouping to it.hideInactiveSessions }.distinctUntilChanged(),
+        combine(settings, pinPreview) { s, preview -> Layout(s.sessionListGrouping, s.hideInactiveSessions, preview ?: s.pinnedFolders, preview != null) }.distinctUntilChanged(),
         localSettings.map { values -> values.expandedProjects.filterValues { it }.keys }.distinctUntilChanged(),
         unreadSessionIds,
         archivingSessionIds,
-    ) { snapshot, (grouping, archiveHidden), expanded, unread, archiving ->
+    ) { snapshot, layout, expanded, unread, archiving ->
         // Missing snapshots must reach combine and scan to release the old account's metadata graph.
-        snapshot?.takeIf { it.ready }?.let { HomeListInputs(it, grouping, archiveHidden, expanded, unread, archiving) }
+        snapshot?.takeIf { it.ready }?.let { HomeListInputs(it, layout.grouping, layout.archiveHidden, expanded, unread, archiving, layout.pins, layout.dragging) }
     }
         .distinctUntilChanged()
         .map { inputs ->

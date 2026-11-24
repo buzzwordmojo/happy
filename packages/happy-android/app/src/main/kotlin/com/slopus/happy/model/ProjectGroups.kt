@@ -13,7 +13,11 @@ import kotlinx.serialization.json.JsonPrimitive
 @Immutable
 data class ProjectWorkspaceGroup(val id: String, val name: String?, val sessions: List<SessionRowData>)
 
-/** A project: Rig's durable identity, or a Happy CLI session's machine and working directory. */
+/**
+ * A project: Rig's durable identity, or a Happy CLI session's machine and
+ * working directory. [pin] is how [PinnedFolders] names it: its computer
+ * and repository path, or `project:<id>` for Rig's.
+ */
 @Immutable
 data class ProjectGroupData(
     val id: String,
@@ -22,12 +26,13 @@ data class ProjectGroupData(
     val workspaces: List<ProjectWorkspaceGroup>,
     val sessionCount: Int,
     val activeCount: Int,
+    val pin: Pin? = null,
 )
 
 /** isProjectSession: Rig reports a project for its current sessions. */
 fun Session.isProjectSession(): Boolean = !metadata?.project?.id.isNullOrEmpty()
 
-private class GroupBuilder(val id: String, val name: String, val machineId: String?) {
+private class GroupBuilder(val id: String, val name: String, val machineId: String?, val pin: Pin? = null) {
     val workspaces = mutableListOf<WorkspaceBuilder>()
     var sessionCount = 0
     var activeCount = 0
@@ -36,7 +41,7 @@ private class GroupBuilder(val id: String, val name: String, val machineId: Stri
         // The primary tree leads; the rest keep newest-first order.
         val primary = workspaces.indexOfFirst { it.id == "" }
         if (primary > 0) workspaces.add(0, workspaces.removeAt(primary))
-        return ProjectGroupData(id, name, machineId, workspaces.map { it.build() }, sessionCount, activeCount)
+        return ProjectGroupData(id, name, machineId, workspaces.map { it.build() }, sessionCount, activeCount, pin)
     }
 }
 
@@ -55,7 +60,9 @@ fun buildProjectGroups(
     val workspaces = HashMap<String, WorkspaceBuilder>()
     for (session in sessions) {
         val project = session.metadata!!.project!!
-        val group = projects.getOrPut(project.id) { GroupBuilder(project.id, project.name, session.metadata.machineId) }
+        val group = projects.getOrPut(project.id) {
+            GroupBuilder(project.id, project.name, session.metadata.machineId, Pin(session.metadata.machineId.orEmpty(), projectPlaceKey(project.id)))
+        }
         val workspace = session.metadata.workspace
         val workspaceId = workspace?.id ?: ""
         val workspaceGroup = workspaces.getOrPut("${project.id}\u0000$workspaceId") {
@@ -91,7 +98,12 @@ fun buildPathProjectGroups(
         // JSON.stringify([machineId, projectPath])
         val key = JsonArray(listOf(machineId?.let(::JsonPrimitive) ?: JsonNull, JsonPrimitive(projectPath))).toString()
         val group = projects.getOrPut(key) {
-            GroupBuilder("$idPrefix:$key", pathProjectName(projectPath, session.metadata?.homeDir), machineId)
+            GroupBuilder(
+                "$idPrefix:$key",
+                pathProjectName(projectPath, session.metadata?.homeDir),
+                machineId,
+                machineId?.takeIf { projectPath.isNotEmpty() }?.let { Pin(it, projectPath) },
+            )
         }
         val workspace = workspaces.getOrPut("$key\u0000$workspaceId") {
             WorkspaceBuilder(workspaceId, workspaceName).also { group.workspaces.add(it) }

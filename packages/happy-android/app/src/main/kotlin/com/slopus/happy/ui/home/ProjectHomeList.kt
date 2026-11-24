@@ -4,6 +4,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -26,13 +28,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.collapse
 import androidx.compose.ui.semantics.expand
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -135,6 +143,7 @@ fun ProjectHomeRowContent(row: ProjectHomeRow, callbacks: HomeListCallbacks, car
             SectionRow(
                 stringResource(
                     when (row.section) {
+                        ProjectHomeSection.Pinned -> R.string.home_dock_picker_pinned
                         ProjectHomeSection.Bots -> R.string.sidebar_bots
                         ProjectHomeSection.Tasks -> R.string.home_info_tasks
                         ProjectHomeSection.Projects -> R.string.sidebar_projects
@@ -256,6 +265,11 @@ private fun ProjectGitChanges(session: SessionRowData?) {
  * A project's card: it goes by the project's name and opens the project's
  * own checkout. The trailing `+` (and a long press) creates a workspace in
  * it; a stem drops from the avatar to the first worktree.
+ *
+ * Pinning (#1707): swiping left uncovers Pin (Unpin on a pinned card,
+ * [SwipeToPin]). A long press on a pinned card lifts it to drag within the
+ * Pinned section ([PinDrag]); let go where it was picked up, it opens the
+ * project's menu as a long press does elsewhere.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -265,54 +279,98 @@ private fun ProjectCardRow(project: ProjectHomeEntry, callbacks: HomeListCallbac
     val session = project.session
     val origin: WorkspaceOrigin? = (session ?: project.avatarSession)?.let(::workspaceOrigin)
     val stem = treeLine()
-    Row(
-        modifier = Modifier
-            .padding(top = if (carded) 0.dp else ProjectListSpec.projectRowTop)
-            .fillMaxWidth()
-            .height(ProjectListSpec.projectRow)
-            .testTag(ProjectListTags.PROJECT)
-            .sessionPressDown(session?.id, callbacks)
-            .combinedClickable(
-                enabled = session != null || origin != null,
-                role = Role.Button,
-                onClick = { session?.let { callbacks.onOpen(it.id) } },
-                onLongClick = origin?.let { { callbacks.onProjectMenu(project.name, it) } },
-            )
-            .padding(horizontal = ProjectListSpec.rowPaddingX),
-        verticalAlignment = Alignment.CenterVertically,
+    val pin = project.pin
+    val drag = LocalPinDrag.current
+    val haptics = LocalHapticFeedback.current
+    val slop = LocalViewConfiguration.current.touchSlop
+    val key = ProjectHomeRow.ProjectCard(project).key
+    val dragsPin = project.pinned && pin != null && drag != null
+    SwipeToPin(
+        enabled = pin != null && drag?.heldKey == null,
+        pinned = project.pinned,
+        label = stringResource(if (project.pinned) R.string.home_dock_unpin else R.string.home_dock_pin),
+        actionTag = PinTags.action(project.id),
+        onPin = { pin?.let(callbacks.onTogglePin) },
     ) {
-        AvatarLane {
-            project.avatarSession?.let {
-                Avatar(id = it.avatarId, size = ProjectListSpec.avatar, imageUri = it.projectAvatarUri, thumbhash = it.projectAvatarThumbhash)
-            }
-            if (project.worktreeCount > 0) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .testTag(ProjectListTags.TREE_STEM)
-                        .width(stem)
-                        .height((ProjectListSpec.projectRow - ProjectListSpec.avatar) / 2)
-                        .background(colors.textSecondary),
-                )
-            }
-        }
-        RowName(project.name, project.working, ProjectListSpec.projectName)
         Row(
-            modifier = Modifier.padding(start = ProjectListSpec.trailingGap),
-            horizontalArrangement = Arrangement.spacedBy(ProjectListSpec.trailingGap),
+            modifier = Modifier
+                .padding(top = if (carded) 0.dp else ProjectListSpec.projectRowTop)
+                .fillMaxWidth()
+                .height(ProjectListSpec.projectRow)
+                .testTag(ProjectListTags.PROJECT)
+                .sessionPressDown(session?.id, callbacks)
+                .then(
+                    if (dragsPin) {
+                        // A pinned card's own tap: a long hold is the drag's (or the menu's), never a tap,
+                        // and the drag, which sees each move first, takes the gesture from the tap.
+                        Modifier
+                            .semantics {
+                                role = Role.Button
+                                onClick { session?.let { callbacks.onOpen(it.id) }; true }
+                                origin?.let { o -> onLongClick { callbacks.onProjectMenu(project.name, o); true } }
+                            }
+                            .pointerInput(key, session?.id) {
+                                detectTapGestures(onTap = { session?.let { callbacks.onOpen(it.id) } }, onLongPress = {})
+                            }
+                            .pointerInput(key, pin) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        drag!!.start(key, pin!!)
+                                    },
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        drag!!.drag(amount.y)
+                                    },
+                                    onDragEnd = { if (!drag!!.end(slop)) origin?.let { callbacks.onProjectMenu(project.name, it) } },
+                                    onDragCancel = { drag!!.end(slop) },
+                                )
+                            }
+                    } else {
+                        Modifier.combinedClickable(
+                            enabled = session != null || origin != null,
+                            role = Role.Button,
+                            onClick = { session?.let { callbacks.onOpen(it.id) } },
+                            onLongClick = origin?.let { { callbacks.onProjectMenu(project.name, it) } },
+                        )
+                    },
+                )
+                .padding(horizontal = ProjectListSpec.rowPaddingX),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AttentionDot(project.blocked, project.unread)
-            ProjectGitChanges(session)
-            if (origin != null) {
-                Box(
-                    modifier = Modifier
-                        .size(ProjectListSpec.addButtonWidth, ProjectListSpec.addButtonHeight)
-                        .testTag(ProjectListTags.PROJECT_ADD)
-                        .clickable(role = Role.Button) { callbacks.onCreateWorkspace(origin) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Ionicon.Add, size = 18.dp, color = colors.textSecondary, contentDescription = stringResource(R.string.home_create_workspace_in, project.name))
+            AvatarLane {
+                project.avatarSession?.let {
+                    Avatar(id = it.avatarId, size = ProjectListSpec.avatar, imageUri = it.projectAvatarUri, thumbhash = it.projectAvatarThumbhash)
+                }
+                if (project.worktreeCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .testTag(ProjectListTags.TREE_STEM)
+                            .width(stem)
+                            .height((ProjectListSpec.projectRow - ProjectListSpec.avatar) / 2)
+                            .background(colors.textSecondary),
+                    )
+                }
+            }
+            RowName(project.name, project.working, ProjectListSpec.projectName)
+            Row(
+                modifier = Modifier.padding(start = ProjectListSpec.trailingGap),
+                horizontalArrangement = Arrangement.spacedBy(ProjectListSpec.trailingGap),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AttentionDot(project.blocked, project.unread)
+                ProjectGitChanges(session)
+                if (origin != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(ProjectListSpec.addButtonWidth, ProjectListSpec.addButtonHeight)
+                            .testTag(ProjectListTags.PROJECT_ADD)
+                            .clickable(role = Role.Button) { callbacks.onCreateWorkspace(origin) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Ionicon.Add, size = 18.dp, color = colors.textSecondary, contentDescription = stringResource(R.string.home_create_workspace_in, project.name))
+                    }
                 }
             }
         }

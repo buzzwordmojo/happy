@@ -46,6 +46,20 @@ data class PinnedFolders(val entries: List<Pin> = emptyList()) {
         return copy(entries = rest.subList(0, to) + pin + rest.subList(to, rest.size))
     }
 
+    /**
+     * Where a project's [pin] sits in the order, or null when it isn't
+     * pinned. A Rig project (`project:<id>`) is the same project on every
+     * computer that reaches it, so its key alone decides.
+     */
+    fun rankOf(pin: Pin?): Int? {
+        if (pin == null) return null
+        val index = if (readProjectPlaceKey(pin.key) != null) entries.indexOfFirst { it.key == pin.key } else entries.indexOf(pin)
+        return index.takeIf { it >= 0 }
+    }
+
+    /** The stored pin [rankOf] matched for [pin], to toggle or move it as stored. */
+    fun storedPin(pin: Pin): Pin? = rankOf(pin)?.let(entries::get)
+
     /** The settings value: `[{machineId, path}]`, in order. */
     fun toSettings(): JsonArray = JsonArray(
         entries.map { JsonObject(mapOf("machineId" to JsonPrimitive(it.machineId), "path" to JsonPrimitive(it.key))) },

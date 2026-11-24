@@ -204,6 +204,56 @@ class ProjectHomeRowsTest {
         )
     }
 
+    /** A project as Happy CLI or Rig names it to [PinnedFolders]. */
+    private fun pinnable(name: String, machineId: String = "machine-c", rig: Boolean = false): SessionListItem {
+        val workspaces = listOf(ws("", null, row("$name-chat", machineId = machineId)))
+        val pin = if (rig) Pin(machineId, projectPlaceKey(name)) else Pin(machineId, "/h/$name")
+        val source = if (rig) ProjectSource.Rig else ProjectSource.Happy
+        return SessionListItem.ProjectItem(source, ProjectGroupData("${if (rig) "rig" else "happy"}:$name", name, machineId, workspaces, 1, 1, pin))
+    }
+
+    @Test fun pinnedProjectsLeadInThePersonsOrderFromEveryComputer() {
+        val items = listOf(pinnable("app"), pinnable("docs"), pinnable("site", machineId = "machine-a", rig = true), pinnable("tools"))
+        // Pinned in this order: docs, then Rig's site (named on another computer), then app.
+        val pins = PinnedFolders().toggle("machine-c", "/h/docs").toggle("machine-b", projectPlaceKey("site")).toggle("machine-c", "/h/app")
+        val rows = buildProjectHomeRows(items, machines, "unknown", emptySet(), pins = pins)
+        assertEquals(
+            listOf(
+                "section:Pinned", "project:docs(0)", "project:site(0)", "project:app(0)",
+                "machine:Terminal", "section:Projects", "project:tools(0)",
+            ),
+            shape(rows),
+        )
+        assertEquals(listOf(true, true, true), rows.filterIsInstance<ProjectHomeRow.ProjectCard>().take(3).map { it.project.pinned })
+        assertEquals(Pin("machine-c", "/h/tools"), rows.filterIsInstance<ProjectHomeRow.ProjectCard>().last().project.pin)
+        // A computer whose projects are all pinned has no heading of its own.
+        val allPinned = buildProjectHomeRows(listOf(pinnable("app")), machines, "unknown", emptySet(), pins = PinnedFolders().toggle("machine-c", "/h/app"))
+        assertEquals(listOf("section:Pinned", "project:app(0)"), shape(allPinned))
+    }
+
+    @Test fun aDraggedPinnedSectionIsCardsAlone() {
+        val worktreed = SessionListItem.ProjectItem(
+            ProjectSource.Happy,
+            ProjectGroupData("happy:app", "app", "machine-c", worktrees(2), 3, 3, Pin("machine-c", "/h/app")),
+        )
+        val pins = PinnedFolders().toggle("machine-c", "/h/app")
+        assertEquals(
+            listOf("section:Pinned", "project:app(2)", "worktree:w1", "worktree:w2:last"),
+            shape(buildProjectHomeRows(listOf(worktreed), machines, "unknown", emptySet(), pins = pins)),
+        )
+        assertEquals(
+            listOf("section:Pinned", "project:app(0)"),
+            shape(buildProjectHomeRows(listOf(worktreed), machines, "unknown", emptySet(), pins = pins, dragging = true)),
+        )
+    }
+
+    @Test fun noPinsNoPinnedSection() {
+        assertEquals(
+            listOf("machine:Terminal", "section:Projects", "project:app(0)"),
+            shape(buildProjectHomeRows(listOf(pinnable("app")), machines, "unknown", emptySet())),
+        )
+    }
+
     @Test fun headsTheListWithTheComputerEvenForOne() {
         assertEquals(
             listOf("machine:Studio", "section:Projects", "project:happy(0)"),
