@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyItemScope
@@ -34,12 +33,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.slopus.happy.model.Pin
@@ -66,7 +65,7 @@ object PinSwipeSpec {
 
 /**
  * A project card that swipes (#1707, Telegram's single action): dragging
- * left uncovers one rounded pill, a pin glyph beside "Pin" (or "Unpin"),
+ * left narrows the row to uncover one rounded pill, a pin glyph beside "Pin" (or "Unpin"),
  * in the primary button's colors, and stops there. Releasing past half
  * way leaves it open; a tap on the pill pins and closes it.
  */
@@ -110,8 +109,15 @@ internal fun SwipeToPin(
             }
         }
         Box(
+            // The row gives up the pill's lane rather than sliding under the card's edge:
+            // its avatar stays put and its name ellipsizes, so nothing is cut off.
             modifier = Modifier
-                .offset { IntOffset(offset.value.roundToInt(), 0) }
+                .layout { measurable, constraints ->
+                    val width = constraints.maxWidth
+                    val cut = (-offset.value).roundToInt().coerceIn(0, width)
+                    val placeable = measurable.measure(constraints.copy(minWidth = (constraints.minWidth - cut).coerceAtLeast(0), maxWidth = width - cut))
+                    layout(width, placeable.height) { placeable.place(0, 0) }
+                }
                 .draggable(
                     enabled = enabled,
                     orientation = Orientation.Horizontal,
