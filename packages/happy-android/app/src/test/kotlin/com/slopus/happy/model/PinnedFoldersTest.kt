@@ -23,6 +23,23 @@ class PinnedFoldersTest {
         assertEquals(emptyMap<String, List<String>>(), off.toggle("m1", "/b").byMachine)
     }
 
+    @Test fun pinsKeepOneOrderAcrossComputersAndMove() {
+        val pins = PinnedFolders().toggle("m1", "/a").toggle("m2", "/b").toggle("m1", "/c")
+        assertEquals(listOf(Pin("m1", "/a"), Pin("m2", "/b"), Pin("m1", "/c")), pins.entries)
+        assertEquals(listOf("/a", "/c"), pins.of("m1"))
+        // Dragged to the front, then to the end (an index past it clamps).
+        val front = pins.moved(Pin("m1", "/c"), 0)
+        assertEquals(listOf(Pin("m1", "/c"), Pin("m1", "/a"), Pin("m2", "/b")), front.entries)
+        assertEquals(listOf("/c", "/a"), front.of("m1"))
+        assertEquals(listOf(Pin("m2", "/b"), Pin("m1", "/c"), Pin("m1", "/a")), front.moved(Pin("m2", "/b"), -3).entries)
+        assertEquals(listOf(Pin("m1", "/a"), Pin("m2", "/b"), Pin("m1", "/c")), front.moved(Pin("m1", "/c"), 99).entries)
+        // A pin that isn't there, or a move to where it is, changes nothing.
+        assertEquals(pins, pins.moved(Pin("m9", "/x"), 0))
+        assertEquals(pins, pins.moved(Pin("m2", "/b"), 1))
+        // The order survives the settings round trip.
+        assertEquals(front, PinnedFolders.fromSettings(front.toSettings()))
+    }
+
     @Test fun blankKeysAndComputersChangeNothing() {
         val none = PinnedFolders()
         assertEquals(none, none.toggle("", "/a"))

@@ -126,24 +126,17 @@ class ComposeJourneyTest {
         rule.waitFor(ComposeChatTags.FOLDER_MENU)
         rule.node(ComposeChatTags.CUSTOM_PATH).assertExists()
         rule.onNodeWithText("New Bot…").assertDoesNotExist()
-        // A folder's pin fills at once and leaves the menu open; the folder moves under Pinned the next time it opens.
+        // A folder's pin moves it under Pinned at once and leaves the menu open; a second tap moves it back.
         rule.onNodeWithText("Pinned").assertDoesNotExist()
         rule.node(ComposeChatTags.pin("/h/repo")).assertContentDescriptionEquals("Pin").performClick()
         rule.waitUntil(5_000) { newSession.pins.value.byMachine.values.flatten() == listOf("/h/repo") }
         // In the account's settings, so it follows the account to its other devices.
         rule.waitUntil(5_000) { graph.settings.document.value["pinnedMachinePaths"].toString().contains("\"path\":\"/h/repo\"") }
-        rule.node(ComposeChatTags.pin("/h/repo")).assertContentDescriptionEquals("Unpin")
-        rule.node(ComposeChatTags.FOLDER_MENU).assertExists()
-        rule.onNodeWithText("Pinned").assertDoesNotExist()
-        rule.node(ComposeChatTags.option(NewSessionPage.Project, "/h/repo")).performClick()
-        rule.waitUntilDoesNotExist(hasTestTag(ComposeChatTags.FOLDER_MENU), 5_000)
-        rule.node(NewWorkTags.FOLDER).performClick()
-        rule.waitFor(ComposeChatTags.FOLDER_MENU)
         rule.waitForText("Pinned")
-        // Unpinned, it keeps its place until the menu opens again.
-        rule.node(ComposeChatTags.pin("/h/repo")).performClick()
+        rule.node(ComposeChatTags.FOLDER_MENU).assertExists()
+        rule.node(ComposeChatTags.pin("/h/repo")).assertContentDescriptionEquals("Unpin").performClick()
         rule.waitUntil(5_000) { newSession.pins.value.byMachine.isEmpty() }
-        rule.onNodeWithText("Pinned").assertExists()
+        rule.waitUntilDoesNotExist(hasText("Pinned"), 5_000)
         rule.node(ComposeChatTags.option(NewSessionPage.Project, "/h/repo")).performClick()
         rule.node(HeaderTags.LEFT).performClick()
         rule.waitFor(HomeTags.COMPOSE)

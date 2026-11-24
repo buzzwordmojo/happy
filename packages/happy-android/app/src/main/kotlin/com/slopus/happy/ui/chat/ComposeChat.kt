@@ -1,8 +1,13 @@
 package com.slopus.happy.ui.chat
 
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.animateBounds
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.LookaheadScope
 import androidx.compose.ui.semantics.Role
 import com.slopus.happy.text.words
 import androidx.annotation.StringRes
@@ -34,6 +39,7 @@ import com.slopus.happy.model.describeBotNameProblem
 import com.slopus.happy.model.sanitizeBotName
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.MenuSpec
+import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.home.HARNESS_SETUP_HELP_URL
 import com.slopus.happy.ui.theme.HappyTheme
 import java.util.Locale
@@ -672,37 +678,39 @@ private fun StatusDot(color: Color) {
  * path. Each folder's pin (40 dp, at the row's end, before the chosen
  * one's check) pins or unpins it and leaves the menu open.
  *
- * The rows hold the order and sections they opened with: a pin fills or
- * empties at once, and the folder moves the next time the menu opens.
- * Moving it now would slide rows under the finger, and a Pinned heading
- * growing the menu makes the popup jump to the other side of its row.
+ * A pin moves its folder at once, as Telegram and Messages move a pinned
+ * chat: each row and heading slides from where it was to where it goes
+ * ([animateBounds]), so the eye follows the folder instead of finding it
+ * again. With the system's reduce motion they move without the slide.
  */
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 private fun FolderMenu(compose: ComposeChat, options: NewSessionOptions, close: () -> Unit) {
     val newSession = compose.newSession
     val customTitle = stringResource(R.string.machine_launcher_enter_custom_path)
     val customPlaceholder = stringResource(R.string.home_dock_custom_path_placeholder)
     val ok = stringResource(R.string.common_ok)
-    val opened = remember { options.projects.map { it.key } to options.projects.filter { it.pinned }.mapTo(HashSet()) { it.key } }
-    val (openedOrder, openedPinned) = opened
-    val byKey = options.projects.associateBy { it.key }
-    // A folder that arrived while open (its computer's chats coming in) goes at the end.
-    val rows = openedOrder.mapNotNull(byKey::get) + options.projects.filter { it.key !in openedOrder }
-    val (pinned, recent) = rows.partition { it.key in openedPinned }
-    @Composable
-    fun Folder(option: PickerOption) {
-        FolderOption(option, option.key == options.project?.key, onPin = { newSession.togglePin(option.key) }) { key ->
-            close()
-            newSession.select(NewSessionPage.Project, key)
+    val reduceMotion = rememberReduceMotion()
+    val (pinned, recent) = options.projects.partition { it.pinned }
+    LookaheadScope {
+        val scope = this
+        fun Modifier.slides(): Modifier = if (reduceMotion) this else animateBounds(scope)
+        Column {
+            if (pinned.isNotEmpty()) {
+                key("heading:pinned") { HappyMenuSection(stringResource(R.string.home_dock_picker_pinned), Modifier.slides()) }
+            }
+            pinned.forEach { option ->
+                key(option.key) { FolderRow(compose, options, option, Modifier.slides(), close) }
+            }
+            // With every folder pinned there is no Projects heading over nothing.
+            if (recent.isNotEmpty() || pinned.isEmpty()) {
+                key("heading:projects") { HappyMenuSection(stringResource(R.string.home_dock_picker_projects), Modifier.slides()) }
+            }
+            recent.forEach { option ->
+                key(option.key) { FolderRow(compose, options, option, Modifier.slides(), close) }
+            }
         }
     }
-    if (pinned.isNotEmpty()) {
-        HappyMenuSection(stringResource(R.string.home_dock_picker_pinned))
-        pinned.forEach { Folder(it) }
-    }
-    // With every folder pinned there is no Projects heading over nothing.
-    if (recent.isNotEmpty() || pinned.isEmpty()) HappyMenuSection(stringResource(R.string.home_dock_picker_projects))
-    recent.forEach { Folder(it) }
     HappyMenuItem(
         label = customTitle,
         onClick = {
@@ -786,9 +794,18 @@ private fun BotNameRow(compose: ComposeChat, name: String, enabled: Boolean, onR
     )
 }
 
+@Composable
+private fun FolderRow(compose: ComposeChat, options: NewSessionOptions, option: PickerOption, modifier: Modifier, close: () -> Unit) {
+    val newSession = compose.newSession
+    FolderOption(option, option.key == options.project?.key, modifier, onPin = { newSession.togglePin(option.key) }) { key ->
+        close()
+        newSession.select(NewSessionPage.Project, key)
+    }
+}
+
 /** A folder row: [MenuOption]'s, with its pin at the end and the chosen one's check before it. */
 @Composable
-private fun FolderOption(option: PickerOption, selected: Boolean, onPin: () -> Unit, onPick: (String) -> Unit) {
+private fun FolderOption(option: PickerOption, selected: Boolean, modifier: Modifier, onPin: () -> Unit, onPick: (String) -> Unit) {
     val colors = HappyTheme.colors
     val pinLabel = stringResource(if (option.pinned) R.string.home_dock_unpin else R.string.home_dock_pin)
     HappyMenuItem(
@@ -817,7 +834,7 @@ private fun FolderOption(option: PickerOption, selected: Boolean, onPin: () -> U
                 }
             }
         },
-        modifier = Modifier.testTag(ComposeChatTags.option(NewSessionPage.Project, option.key)),
+        modifier = modifier.testTag(ComposeChatTags.option(NewSessionPage.Project, option.key)),
     )
 }
 

@@ -6,34 +6,49 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
+/** One pinned folder: a computer (a [MachineChoice] id) and the folder's picker key there. */
+@Immutable
+data class Pin(val machineId: String, val key: String)
+
 /**
- * The folders pinned in the new-session Project menu, per computer (a
- * [MachineChoice] id), each by its picker key: a directory as typed or
- * reported, or `project:<id>` for a project only the catalog places.
- * Synced with the account's settings ([Settings.pinnedFolders]), oldest
- * pin first, so the menu's order holds still while the recent folders
- * under it move.
+ * The account's pinned folders, in the one order the person keeps them in:
+ * each a directory as typed or reported, or `project:<id>` for a project
+ * only the catalog places, on its computer. The new-session Project menu
+ * offers a computer's pins first ([of]); the home list's Pinned section
+ * shows every pin's project card in this order, which a long press drags.
+ * Synced with the account's settings ([Settings.pinnedFolders]).
  */
 @Immutable
-data class PinnedFolders(val byMachine: Map<String, List<String>> = emptyMap()) {
-    fun of(machineId: String?): List<String> = machineId?.let { byMachine[it] }.orEmpty()
+data class PinnedFolders(val entries: List<Pin> = emptyList()) {
+    /** A computer's pins, in order. */
+    fun of(machineId: String?): List<String> = if (machineId == null) emptyList() else entries.filter { it.machineId == machineId }.map { it.key }
 
-    fun contains(machineId: String?, key: String): Boolean = key in of(machineId)
+    /** The pins by computer, each computer's in order. */
+    val byMachine: Map<String, List<String>> get() = entries.groupBy({ it.machineId }, { it.key })
 
-    /** Pins [key] on [machineId], or unpins it if it already was. A blank key or computer changes nothing. */
+    fun contains(machineId: String?, key: String): Boolean = entries.any { it.machineId == machineId && it.key == key }
+
+    /** Pins [key] on [machineId] at the end, or unpins it if it already was. A blank key or computer changes nothing. */
     fun toggle(machineId: String, key: String): PinnedFolders {
         val folder = key.trim()
         if (machineId.isEmpty() || folder.isEmpty()) return this
-        val current = of(machineId)
-        val next = if (folder in current) current - folder else current + folder
-        return copy(byMachine = if (next.isEmpty()) byMachine - machineId else byMachine + (machineId to next))
+        val pin = Pin(machineId, folder)
+        return copy(entries = if (pin in entries) entries - pin else entries + pin)
     }
 
-    /** The settings value: `[{machineId, path}]`, computer by computer, oldest pin first. */
+    /** [pin] moved to [index] among the pins (clamped); a pin that isn't there changes nothing. */
+    fun moved(pin: Pin, index: Int): PinnedFolders {
+        val from = entries.indexOf(pin)
+        if (from < 0) return this
+        val rest = entries - pin
+        val to = index.coerceIn(0, rest.size)
+        if (to == from) return this
+        return copy(entries = rest.subList(0, to) + pin + rest.subList(to, rest.size))
+    }
+
+    /** The settings value: `[{machineId, path}]`, in order. */
     fun toSettings(): JsonArray = JsonArray(
-        byMachine.flatMap { (machineId, keys) ->
-            keys.map { JsonObject(mapOf("machineId" to JsonPrimitive(machineId), "path" to JsonPrimitive(it))) }
-        },
+        entries.map { JsonObject(mapOf("machineId" to JsonPrimitive(it.machineId), "path" to JsonPrimitive(it.key))) },
     )
 
     companion object {
@@ -46,16 +61,15 @@ data class PinnedFolders(val byMachine: Map<String, List<String>> = emptyMap()) 
          * as is a repeat. It never fails, so it can't reset the other settings.
          */
         fun fromSettings(element: JsonElement?): PinnedFolders {
-            val entries = element as? JsonArray ?: return PinnedFolders()
-            val byMachine = LinkedHashMap<String, MutableList<String>>()
-            for (entry in entries) {
+            val array = element as? JsonArray ?: return PinnedFolders()
+            val entries = LinkedHashSet<Pin>()
+            for (entry in array) {
                 val o = entry as? JsonObject ?: continue
                 val machineId = o["machineId"].nonBlankString() ?: continue
                 val path = o["path"].nonBlankString() ?: continue
-                val keys = byMachine.getOrPut(machineId) { mutableListOf() }
-                if (path !in keys) keys += path
+                entries += Pin(machineId, path)
             }
-            return PinnedFolders(byMachine)
+            return PinnedFolders(entries.toList())
         }
 
         private fun JsonElement?.nonBlankString(): String? =
