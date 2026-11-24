@@ -2,7 +2,7 @@ package com.slopus.happy.journeys
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -67,7 +67,7 @@ class PinJourneyTest {
 
         // Swipe docs: its Pin pill, then the card leads the list under Pinned.
         card("docs").performTouchInput { swipeLeft() }
-        pinAction("docs").assertContentDescriptionEquals("Pin").performClick()
+        pinAction("docs").assert(hasAnyDescendant(hasText("Pin"))).performClick()
         rule.waitUntil(5_000) { stored() == listOf(Pin(Journey.MACHINE, "/h/docs")) }
         rule.waitUntil(5_000) { pinnedNames(home) == listOf("docs") }
 
@@ -76,7 +76,7 @@ class PinJourneyTest {
         pinAction("site").performClick()
         rule.waitUntil(5_000) { pinnedNames(home) == listOf("docs", "site") }
         card("site").performTouchInput { swipeLeft() }
-        pinAction("site").assertContentDescriptionEquals("Unpin")
+        pinAction("site").assert(hasAnyDescendant(hasText("Unpin")))
         card("site").performTouchInput { swipeRight() }
 
         // A long press lifts site; dragged up past docs, it takes docs' place, written on the drop.

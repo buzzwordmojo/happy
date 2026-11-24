@@ -8,12 +8,12 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -50,31 +50,57 @@ internal fun SwipeToArchive(
     onArchive: () -> Unit,
     modifier: Modifier = Modifier,
     leave: Boolean = false,
-    content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit,
+    content: @Composable BoxScope.() -> Unit,
+) = SwipeAction(
+    enabled = enabled,
+    color = HappyTheme.colors.status.error,
+    icon = if (leave) Ionicon.ExitOutline else Ionicon.ArchiveOutline,
+    label = stringResource(if (leave) R.string.task_leave else R.string.session_info_archive_session),
+    actionTag = FlatRowTags.ARCHIVE_ACTION,
+    onAction = onArchive,
+    modifier = modifier,
+    content = content,
+)
+
+/**
+ * A row with one trailing action, the home list's swipe (iOS's ListSwipeAction):
+ * dragging left slides the row to uncover a [FlatRowSpec.swipeAction]-wide
+ * block of [color], a white [icon] over [label], and stops there. Releasing
+ * past half way leaves it open; a tap on the block runs [onAction] and closes it.
+ */
+@Composable
+internal fun SwipeAction(
+    enabled: Boolean,
+    color: Color,
+    icon: Ionicon,
+    label: String,
+    actionTag: String,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit,
 ) {
-    val colors = HappyTheme.colors
     val actionWidth = with(LocalDensity.current) { FlatRowSpec.swipeAction.toPx() }
     val offset = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     Box(modifier = modifier.fillMaxWidth().clipToBounds()) {
-        // Drawn only once the row moves: at rest its red would fringe a card's rounded corners.
+        // Drawn only once the row moves: at rest its colour would fringe a card's rounded corners.
         Box(modifier = Modifier.matchParentSize().drawWithContent { if (offset.value < 0f) drawContent() }, contentAlignment = Alignment.CenterEnd) {
             Column(
                 modifier = Modifier
                     .width(FlatRowSpec.swipeAction)
                     .fillMaxHeight()
-                    .testTag(FlatRowTags.ARCHIVE_ACTION)
-                    .background(colors.status.error)
+                    .testTag(actionTag)
+                    .background(color)
                     .clickable(enabled = enabled) {
                         scope.launch { offset.animateTo(0f) }
-                        onArchive()
+                        onAction()
                     },
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Icon(if (leave) Ionicon.ExitOutline else Ionicon.ArchiveOutline, size = FlatRowSpec.swipeIcon, color = Color.White)
+                Icon(icon, size = FlatRowSpec.swipeIcon, color = Color.White)
                 Text(
-                    text = stringResource(if (leave) R.string.task_leave else R.string.session_info_archive_session),
+                    text = label,
                     style = FlatRowSpec.swipeText,
                     color = Color.White,
                     textAlign = TextAlign.Center,

@@ -1,73 +1,35 @@
 package com.slopus.happy.ui.home
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.layout
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.slopus.happy.model.Pin
-import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
-import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.happyTextStyle
 import kotlin.math.abs
-import kotlin.math.roundToInt
-import kotlinx.coroutines.launch
 
 object PinTags {
     fun action(projectId: String) = "pin.action.$projectId"
 }
 
-/** The pin swipe's spec: a 104 lane holding a rounded pill (8 inset), its glyph beside its word. */
-object PinSwipeSpec {
-    val lane = 104.dp
-    val inset = 8.dp
-    val pillHeight = 40.dp
-    val icon = 16.dp
-    val text = happyTextStyle(fontSize = 13, lineHeight = 18)
-}
+/** The pin swipe's colour: iOS's own pin action (vault history) is tileOrange, #FF9500. */
+val PinActionColor = Color(0xFFFF9500)
 
 /**
- * A project card that swipes (#1707, Telegram's single action): dragging
- * left narrows the row to uncover one rounded pill, a pin glyph beside "Pin" (or "Unpin"),
- * in the primary button's colors, and stops there. Releasing past half
- * way leaves it open; a tap on the pill pins and closes it.
+ * A project card that swipes (#1707) the way a chat swipes to archive
+ * ([SwipeAction]): dragging left uncovers one orange block, a pin glyph
+ * over "Pin" (or "Unpin"); a tap on it pins and closes it.
  */
 @Composable
 internal fun SwipeToPin(
@@ -78,61 +40,16 @@ internal fun SwipeToPin(
     onPin: () -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
-) {
-    val colors = HappyTheme.colors
-    val lane = with(LocalDensity.current) { PinSwipeSpec.lane.toPx() }
-    val offset = remember { Animatable(0f) }
-    val scope = rememberCoroutineScope()
-    Box(modifier = modifier.fillMaxWidth().clipToBounds()) {
-        Box(
-            modifier = Modifier.matchParentSize().drawWithContent { if (offset.value < 0f) drawContent() },
-            contentAlignment = Alignment.CenterEnd,
-        ) {
-            Row(
-                modifier = Modifier
-                    .padding(end = PinSwipeSpec.inset)
-                    .width(PinSwipeSpec.lane - PinSwipeSpec.inset * 2)
-                    .height(PinSwipeSpec.pillHeight)
-                    .clip(RoundedCornerShape(50))
-                    .background(colors.button.primaryBackground)
-                    .clickable(enabled = enabled, role = Role.Button) {
-                        scope.launch { offset.animateTo(0f) }
-                        onPin()
-                    }
-                    .semantics { contentDescription = label }
-                    .testTag(actionTag),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(if (pinned) Ionicon.PinOutline else Ionicon.Pin, size = PinSwipeSpec.icon, color = colors.button.primaryTint)
-                Text(label, style = PinSwipeSpec.text, color = colors.button.primaryTint, maxLines = 1, modifier = Modifier.padding(start = 6.dp))
-            }
-        }
-        Box(
-            // The row gives up the pill's lane rather than sliding under the card's edge:
-            // its avatar stays put and its name ellipsizes, so nothing is cut off.
-            modifier = Modifier
-                .layout { measurable, constraints ->
-                    val width = constraints.maxWidth
-                    val cut = (-offset.value).roundToInt().coerceIn(0, width)
-                    val placeable = measurable.measure(constraints.copy(minWidth = (constraints.minWidth - cut).coerceAtLeast(0), maxWidth = width - cut))
-                    layout(width, placeable.height) { placeable.place(0, 0) }
-                }
-                .draggable(
-                    enabled = enabled,
-                    orientation = Orientation.Horizontal,
-                    state = rememberDraggableState { delta ->
-                        scope.launch { offset.snapTo((offset.value + delta).coerceIn(-lane, 0f)) }
-                    },
-                    onDragStopped = { velocity ->
-                        val open = offset.value < -lane / 2 || velocity < -1000f
-                        offset.animateTo(if (open) -lane else 0f)
-                    },
-                ),
-            content = content,
-        )
-    }
-}
+) = SwipeAction(
+    enabled = enabled,
+    color = PinActionColor,
+    icon = if (pinned) Ionicon.PinOutline else Ionicon.Pin,
+    label = label,
+    actionTag = actionTag,
+    onAction = onPin,
+    modifier = modifier,
+    content = content,
+)
 
 /**
  * The Pinned section's drag (#1707): a long press lifts a pinned card,
