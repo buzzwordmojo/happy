@@ -290,7 +290,10 @@ class HomeServices private constructor(private val graph: AppGraph) {
             scope = scope,
         )
         val resources = context.resources
-        NewSessionServices(drafts, snapshots, settings, machineActions, starter, newSessionLabels(resources), resources::getString, scope)
+        NewSessionServices(
+            drafts, snapshots, settings, machineActions, starter, newSessionLabels(resources), resources::getString, scope,
+            changeSettings = { transform -> graph.settings.change(transform) },
+        )
     }.also { newSessionServices = it }
 
     private var reviewPrompter: ReviewPrompter? = null

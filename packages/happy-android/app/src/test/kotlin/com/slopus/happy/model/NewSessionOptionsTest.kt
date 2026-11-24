@@ -86,6 +86,47 @@ class NewSessionOptionsTest {
         assertEquals("~", options.project?.key)
     }
 
+    @Test fun pinnedFoldersComeFirstInTheOrderTheyWerePinned() {
+        val sessions = listOf(
+            session("a", metadata(path = "/Users/dev/newest") { put("machineId", "m1") }),
+            session("b", metadata(path = "/Users/dev/middle") { put("machineId", "m1") }),
+            session("c", metadata(path = "/Users/dev/oldest") { put("machineId", "m1") }),
+        )
+        val draft = NewSessionDraft(selectedMachineId = "m1", selectedPath = "/Users/dev/newest")
+        val plain = resolve(draft, listOf(studio), sessions)
+        val pins = PinnedFolders().toggle("m1", "/Users/dev/oldest").toggle("m1", "/Users/dev/middle")
+        val pinned = resolveNewSessionOptions(draft, listOf(studio), sessions, overrides, pins = pins)
+        assertEquals(listOf("/Users/dev/oldest", "/Users/dev/middle"), pinned.projects.take(2).map { it.key })
+        assertEquals(listOf(true, true), pinned.projects.take(2).map { it.pinned })
+        assertEquals("every folder still offered once", plain.projects.map { it.key }.toSet(), pinned.projects.map { it.key }.toSet())
+        assertEquals(plain.projects.size, pinned.projects.size)
+        assertEquals("the pick is not moved by a pin", plain.project?.key, pinned.project?.key)
+        // Another computer's pins are its own.
+        val elsewhere = resolveNewSessionOptions(draft, listOf(studio), sessions, overrides, pins = PinnedFolders().toggle("m2", "/Users/dev/oldest"))
+        assertEquals(plain.projects.map { it.key }, elsewhere.projects.map { it.key })
+    }
+
+    @Test fun aPinnedFolderKeepsItsRowWithNoRecentSession() {
+        val pins = PinnedFolders().toggle("m1", "/Users/dev/keep")
+        val options = resolveNewSessionOptions(NewSessionDraft(selectedMachineId = "m1"), listOf(studio), emptyList(), overrides, pins = pins)
+        val row = options.projects.first()
+        assertEquals("/Users/dev/keep", row.key)
+        assertEquals("~/keep", row.name)
+        assertTrue(row.pinned)
+        assertEquals("the draft still starts home, not in the pin", "~", options.project?.key)
+    }
+
+    @Test fun theDockSplitsPinnedFromProjects() {
+        val labels = NewSessionLabels()
+        val pins = PinnedFolders().toggle("m1", "/Users/dev/keep")
+        val options = resolveNewSessionOptions(NewSessionDraft(selectedMachineId = "m1"), listOf(studio), emptyList(), overrides, pins = pins)
+        val (sections, _) = options.sections(NewSessionPage.Project, labels) { "" }
+        assertEquals(listOf("pinned", "projects", "custom"), sections.map { it.key })
+        assertEquals(listOf("/Users/dev/keep"), sections.first().options.map { it.key })
+        val (none, _) = resolve(NewSessionDraft(selectedMachineId = "m1")).sections(NewSessionPage.Project, labels) { "" }
+        assertEquals("no pins, no Pinned heading", listOf("projects", "custom"), none.map { it.key })
+    }
+
     @Test fun aCatalogOnlyProjectNeedsHappyAgent() {
         val inWorkspace = listOf(
             session("w", rigMetadata(path = "/Users/dev/app/.dev/worktree/x", machineId = "r1", projectId = "p1", projectName = "App", workspaceId = "ws1", workspaceName = "x")),

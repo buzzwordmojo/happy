@@ -54,6 +54,9 @@
     <string name="home_dock_picker_machine">裝置</string>
     <string name="home_dock_picker_project">專案</string>
     <string name="home_dock_picker_projects">專案</string>
+    <string name="home_dock_picker_pinned">已釘選</string>
+    <string name="home_dock_pin">釘選</string>
+    <string name="home_dock_unpin">取消釘選</string>
     <string name="home_dock_picker_worktree">Worktree</string>
     <string name="home_dock_picker_workspace">工作區</string>
     <string name="home_dock_picker_harness">執行環境</string>

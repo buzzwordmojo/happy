@@ -54,6 +54,9 @@
     <string name="home_dock_picker_machine">マシン</string>
     <string name="home_dock_picker_project">プロジェクト</string>
     <string name="home_dock_picker_projects">プロジェクト</string>
+    <string name="home_dock_picker_pinned">ピン留め</string>
+    <string name="home_dock_pin">ピン留め</string>
+    <string name="home_dock_unpin">ピン留めを外す</string>
     <string name="home_dock_picker_worktree">Worktree</string>
     <string name="home_dock_picker_workspace">ワークスペース</string>
     <string name="home_dock_picker_harness">ハーネス</string>

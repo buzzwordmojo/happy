@@ -95,6 +95,13 @@ data class Settings(
     /** UI language, a `SUPPORTED_LANGUAGES` code; null follows the device. */
     val preferredLanguage: String? = null,
     val recentMachinePaths: List<RecentMachinePath> = emptyList(),
+    /**
+     * The folders pinned in the new-session Project menu, per computer,
+     * on the wire as `pinnedMachinePaths` (`[{machineId, path}]`, oldest
+     * pin first). Not happy-app's retired `favoriteDirectories`, whose
+     * stored defaults would come back as pins nobody chose.
+     */
+    val pinnedFolders: PinnedFolders = PinnedFolders(),
     val lastUsedAgent: String? = null,
     val lastUsedPermissionMode: String? = null,
     val lastUsedModelMode: String? = null,
@@ -265,6 +272,12 @@ private val fields: List<Field> = listOf(
             )
         },
         { s -> JsonArray(s.recentMachinePaths.map { JsonObject(mapOf("machineId" to JsonPrimitive(it.machineId), "path" to JsonPrimitive(it.path))) }) },
+    ),
+    Field(
+        PinnedFolders.SETTINGS_KEY,
+        // Never a SchemaMismatch: one bad entry is dropped, not every setting reset.
+        { s, j -> s.copy(pinnedFolders = PinnedFolders.fromSettings(j)) },
+        { it.pinnedFolders.toSettings() },
     ),
     nullableString("lastUsedAgent", { it.lastUsedAgent }) { copy(lastUsedAgent = it) },
     nullableString("lastUsedPermissionMode", { it.lastUsedPermissionMode }) { copy(lastUsedPermissionMode = it) },

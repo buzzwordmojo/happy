@@ -60,6 +60,9 @@
     <string name="home_dock_picker_machine">Machine</string>
     <string name="home_dock_picker_project">Project</string>
     <string name="home_dock_picker_projects">Projects</string>
+    <string name="home_dock_picker_pinned">Pinned</string>
+    <string name="home_dock_pin">Pin</string>
+    <string name="home_dock_unpin">Unpin</string>
     <string name="home_dock_picker_worktree">Worktree</string>
     <string name="home_dock_picker_workspace">Workspace</string>
     <string name="home_dock_picker_harness">Harness</string>

@@ -54,6 +54,9 @@
     <string name="home_dock_picker_machine">Màquina</string>
     <string name="home_dock_picker_project">Projecte</string>
     <string name="home_dock_picker_projects">Projectes</string>
+    <string name="home_dock_picker_pinned">Fixats</string>
+    <string name="home_dock_pin">Fixa</string>
+    <string name="home_dock_unpin">No fixis</string>
     <string name="home_dock_picker_worktree">Worktree</string>
     <string name="home_dock_picker_workspace">Espai de treball</string>
     <string name="home_dock_picker_harness">Entorn</string>

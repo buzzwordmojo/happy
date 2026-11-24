@@ -126,6 +126,17 @@ class ComposeJourneyTest {
         rule.waitFor(ComposeChatTags.FOLDER_MENU)
         rule.node(ComposeChatTags.CUSTOM_PATH).assertExists()
         rule.onNodeWithText("New Bot…").assertDoesNotExist()
+        // A folder's pin puts it under Pinned and leaves the menu open; a second tap takes it out.
+        rule.onNodeWithText("Pinned").assertDoesNotExist()
+        rule.node(ComposeChatTags.pin("/h/repo")).assertContentDescriptionEquals("Pin").performClick()
+        rule.waitUntil(5_000) { newSession.pins.value.byMachine.values.flatten() == listOf("/h/repo") }
+        // In the account's settings, so it follows the account to its other devices.
+        rule.waitUntil(5_000) { graph.settings.document.value["pinnedMachinePaths"].toString().contains("\"path\":\"/h/repo\"") }
+        rule.waitForText("Pinned")
+        rule.node(ComposeChatTags.FOLDER_MENU).assertExists()
+        rule.node(ComposeChatTags.pin("/h/repo")).assertContentDescriptionEquals("Unpin").performClick()
+        rule.waitUntil(5_000) { newSession.pins.value.byMachine.isEmpty() }
+        rule.waitUntilDoesNotExist(hasText("Pinned"), 5_000)
         rule.node(ComposeChatTags.option(NewSessionPage.Project, "/h/repo")).performClick()
         rule.node(HeaderTags.LEFT).performClick()
         rule.waitFor(HomeTags.COMPOSE)

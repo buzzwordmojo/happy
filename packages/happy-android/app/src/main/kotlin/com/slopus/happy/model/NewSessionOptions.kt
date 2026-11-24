@@ -11,7 +11,10 @@ import com.slopus.happy.model.settings.Versions
 // What the new-session composer offers for a draft, and how a pick changes
 // the draft: HomeDock.tsx's derivations and homeDockInteraction.ts.
 
-/** One row of a new-session picker. An [action] (Enter custom path…) is never drawn as chosen. */
+/**
+ * One row of a new-session picker. An [action] (Enter custom path…) is never
+ * drawn as chosen; a [pinned] is a folder pinned in the Project menu.
+ */
 @Immutable
 data class PickerOption(
     val key: String,
@@ -19,6 +22,7 @@ data class PickerOption(
     val description: String? = null,
     val disabled: Boolean = false,
     val action: Boolean = false,
+    val pinned: Boolean = false,
 )
 
 /** One group of a picker: a heading (a model's provider, say), then its rows. */
@@ -46,6 +50,7 @@ class NewSessionLabels(
     val selectMachine: String = "Select machine",
     val project: String = "Project",
     val projects: String = "Projects",
+    val pinned: String = "Pinned",
     val noWorktree: String = "No worktree",
     val main: String = "Main",
     val createWorkspace: String = "Create New Workspace",
@@ -217,10 +222,14 @@ data class NewSessionOptions(
     /** The choices behind a picker, with the one drawn as chosen. */
     fun sections(page: NewSessionPage, labels: NewSessionLabels, titles: (NewSessionPage) -> String): Pair<List<PickerSection>, String?> = when (page) {
         NewSessionPage.Machine -> listOf(PickerSection("machine", titles(page), machines)) to resolvedMachineId
-        NewSessionPage.Project -> listOf(
-            PickerSection("projects", labels.projects, projects),
-            PickerSection("custom", null, listOf(PickerOption(CUSTOM_PROJECT_PATH_KEY, labels.enterCustomPath, action = true))),
-        ) to project?.key
+        NewSessionPage.Project -> projects.partition { it.pinned }.let { (pinned, recent) ->
+            listOfNotNull(
+                pinned.takeIf { it.isNotEmpty() }?.let { PickerSection("pinned", labels.pinned, it) },
+                // With every folder pinned there is no Projects heading over nothing.
+                PickerSection("projects", labels.projects, recent).takeIf { recent.isNotEmpty() || pinned.isEmpty() },
+                PickerSection("custom", null, listOf(PickerOption(CUSTOM_PROJECT_PATH_KEY, labels.enterCustomPath, action = true))),
+            ) to project?.key
+        }
         NewSessionPage.Worktree -> listOf(PickerSection("worktree", titles(page), worktrees)) to worktreeSelection
         NewSessionPage.Agent -> listOf(PickerSection("agent", titles(page), agents)) to agent.key
         NewSessionPage.Model -> models.map { it.copy(title = it.title ?: titles(page)) } to model?.key
@@ -245,6 +254,7 @@ fun resolveNewSessionOptions(
     projectName: (String) -> String? = { null },
     kind: ComposeKind = ComposeKind.Session,
     machinesSynced: Boolean = true,
+    pins: PinnedFolders = PinnedFolders(),
 ): NewSessionOptions {
     // A person picks a computer, not a daemon: the Happy CLI and Happy Agent pair is offered once.
     val choices = collectMachineChoices(machines)
@@ -280,7 +290,12 @@ fun resolveNewSessionOptions(
         }
     }
     val selectedProjectId = draftProjectId ?: places.find { it.path == draft.selectedPath }?.projectId
+    // Resolved before the pinned rows go first, so a draft with no match still falls to the most recent folder.
     val currentProject = resolvePickerOption(projectOptions, listOf(draftProjectPlaceKey, draft.selectedPath, "~"))
+    val orderedProjects = orderProjectOptions(projectOptions, pins.of(choice?.id), homeDir) { key ->
+        // As above: only Happy Agent can open a project the catalog alone places.
+        readProjectPlaceKey(key)?.takeIf { rigSelection != null }?.let { id -> projectName(id)?.let { PickerOption(key, it) } }
+    }
 
     val agentType = draft.agentType
     val rigCreation = if (agentType == AgentType.Rig) rigSelection else null
@@ -357,8 +372,8 @@ fun resolveNewSessionOptions(
         resolvedMachineId = resolvedMachineId,
         machines = machineOptions,
         machine = currentMachine,
-        projects = projectOptions,
-        project = currentProject,
+        projects = orderedProjects,
+        project = currentProject?.let { picked -> orderedProjects.find { it.key == picked.key } ?: picked },
         picksWorkspaces = picksWorkspaces,
         supportsWorktree = supportsWorktree,
         worktreeTarget = worktreeTarget,

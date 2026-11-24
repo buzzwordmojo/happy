@@ -54,6 +54,9 @@
     <string name="home_dock_picker_machine">Машина</string>
     <string name="home_dock_picker_project">Проект</string>
     <string name="home_dock_picker_projects">Проекты</string>
+    <string name="home_dock_picker_pinned">Закреплённые</string>
+    <string name="home_dock_pin">Закрепить</string>
+    <string name="home_dock_unpin">Открепить</string>
     <string name="home_dock_picker_worktree">Worktree</string>
     <string name="home_dock_picker_workspace">Рабочее пространство</string>
     <string name="home_dock_picker_harness">Среда</string>

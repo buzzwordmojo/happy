@@ -78,6 +78,7 @@ fun newSessionLabels(resources: Resources, now: () -> Long = System::currentTime
     selectMachine = resources.getString(R.string.home_dock_select_machine),
     project = resources.getString(R.string.home_dock_picker_project),
     projects = resources.getString(R.string.home_dock_picker_projects),
+    pinned = resources.getString(R.string.home_dock_picker_pinned),
     noWorktree = resources.getString(R.string.home_dock_no_worktree),
     main = resources.getString(R.string.home_dock_main),
     createWorkspace = resources.getString(R.string.home_dock_create_workspace),

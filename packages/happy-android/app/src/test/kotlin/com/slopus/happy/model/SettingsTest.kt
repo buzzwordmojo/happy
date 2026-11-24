@@ -143,13 +143,38 @@ class SettingsTest {
                 "hideInactiveSessions":true,"sortSessionsByActivity":true,"expResumeSession":true,"fileDiffsSidebar":false,
                 "groupToolCalls":false,"compactToolCalls":false,"reviewPromptAnswered":false,"reviewPromptLikedApp":null,
                 "voiceAssistantLanguage":null,"voiceCustomAgentId":null,"voiceBypassToken":false,"preferredLanguage":null,
-                "recentMachinePaths":[],"lastUsedAgent":null,"lastUsedPermissionMode":null,"lastUsedModelMode":null,
+                "recentMachinePaths":[],"pinnedMachinePaths":[],"lastUsedAgent":null,"lastUsedPermissionMode":null,"lastUsedModelMode":null,
                 "agentDefaultOverrides":{},"dismissedCLIWarnings":{"perMachine":{},"global":{}}
             }""",
             ),
             defaultsJson,
         )
         assertEquals(defaults, Settings.parse(defaultsJson))
+    }
+
+    @Test
+    fun pinnedFoldersSyncAsMachinePathsAndNeverResetTheRest() {
+        val parsed = Settings.parse(
+            json(
+                """{
+                "viewInline":true,
+                "pinnedMachinePaths":[{"machineId":"m1","path":"/a"},{"machineId":"m2","path":"~/b"},{"machineId":"m1","path":"/c"},
+                    {"machineId":"m1","path":"/a"},{"machineId":"m1"},{"path":"/x"},{"machineId":"m1","path":3},"junk"]
+            }""",
+            ),
+        )
+        // A bad entry is dropped; the other settings keep their values.
+        assertTrue(parsed.viewInline)
+        assertEquals(mapOf("m1" to listOf("/a", "/c"), "m2" to listOf("~/b")), parsed.pinnedFolders.byMachine)
+        assertEquals(parsed, Settings.parse(parsed.toJson()))
+        // Not an array at all: no pins, and still nothing else reset.
+        val wrong = Settings.parse(json("""{"viewInline":true,"pinnedMachinePaths":"x"}"""))
+        assertTrue(wrong.viewInline)
+        assertEquals(PinnedFolders(), wrong.pinnedFolders)
+        // happy-app's retired favoriteDirectories is not read as pins, and is kept as it came.
+        val legacy = Settings.parse(json("""{"favoriteDirectories":["~/src","~/Desktop"]}"""))
+        assertEquals(PinnedFolders(), legacy.pinnedFolders)
+        assertEquals(element("""["~/src","~/Desktop"]"""), legacy.toJson()["favoriteDirectories"])
     }
 
     @Test

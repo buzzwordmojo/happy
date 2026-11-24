@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import com.slopus.happy.model.AgentType
 import com.slopus.happy.model.ComposeKind
+import com.slopus.happy.model.PinnedFolders
 import com.slopus.happy.model.NewSessionDraft
 import com.slopus.happy.model.NewSessionLabels
 import com.slopus.happy.model.NewSessionOptions
@@ -54,6 +55,8 @@ class NewSessionServices(
     private val translate: (Int) -> String,
     private val scope: CoroutineScope,
     compute: CoroutineDispatcher = Dispatchers.Default,
+    /** Writes the account's settings (SettingsRepository.change); the pin goes through it. */
+    private val changeSettings: ((Settings) -> Settings) -> Unit = {},
 ) {
     private class Resolved(val draft: NewSessionDraft, val options: NewSessionOptions)
 
@@ -86,6 +89,9 @@ class NewSessionServices(
     @Volatile
     var pickedMachineId: String? = null
 
+    /** The Project menu's pinned folders, per computer, from the account's settings. */
+    val pins: StateFlow<PinnedFolders> = settings.map { it.pinnedFolders }.stateIn(scope, SharingStarted.Eagerly, settings.value.pinnedFolders)
+
     private val resolved: StateFlow<Resolved?> = combine(drafts.draft, snapshots, settings, listing, kind) { draft, snapshot, settings, worktrees, kind ->
         snapshot?.let {
             Resolved(
@@ -101,6 +107,7 @@ class NewSessionServices(
                     projectName = { id -> it.projects[id]?.name },
                     kind = kind,
                     machinesSynced = it.machinesSynced,
+                    pins = settings.pinnedFolders,
                 ),
             )
         }
@@ -224,6 +231,17 @@ class NewSessionServices(
 
     /** A custom directory typed in by hand. */
     fun selectPath(path: String) = drafts.change { it.withPath(path) }
+
+    /**
+     * The Project menu's pin: [key] (a row's picker key) pinned or
+     * unpinned on the draft's computer, in the account's settings, so it
+     * follows the account to its other devices. With no computer chosen
+     * there is nothing to pin it on.
+     */
+    fun togglePin(key: String) {
+        val machineId = options.value?.choice?.id ?: drafts.draft.value.selectedMachineId ?: return
+        changeSettings { it.copy(pinnedFolders = it.pinnedFolders.toggle(machineId, key)) }
+    }
 
     /**
      * LegacyComposeStart's followMachine: a computer with no folder picked

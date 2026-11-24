@@ -1,5 +1,9 @@
 package com.slopus.happy.ui.chat
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
 import com.slopus.happy.text.words
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
@@ -28,6 +32,7 @@ import com.slopus.happy.model.ComposeKind
 import com.slopus.happy.model.ComposeOffline
 import com.slopus.happy.model.describeBotNameProblem
 import com.slopus.happy.model.sanitizeBotName
+import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.MenuSpec
 import com.slopus.happy.ui.home.HARNESS_SETUP_HELP_URL
 import com.slopus.happy.ui.theme.HappyTheme
@@ -138,6 +143,7 @@ object ComposeChatTags {
     const val TARGET = "composeChat.target"
     const val MACHINE_MENU = "composeChat.machineMenu"
     const val FOLDER_MENU = "composeChat.folderMenu"
+    fun pin(key: String) = "composeChat.pin.$key"
     const val HARNESS_MENU = "composeChat.harnessMenu"
     fun option(page: NewSessionPage, key: String) = "composeChat.option.${page.name}.$key"
     fun kind(kind: ComposeKind) = "composeChat.kind.${kind.name}"
@@ -660,20 +666,33 @@ private fun StatusDot(color: Color) {
     Box(Modifier.size(8.dp).clip(CircleShape).background(color))
 }
 
-/** The chosen computer's folders, most recent first, and a custom path. */
+/**
+ * The chosen computer's folders: the pinned ones under Pinned, in the
+ * order they were pinned, then the rest most recent first, and a custom
+ * path. Each folder's pin (40 dp, at the row's end, before the chosen
+ * one's check) pins or unpins it and leaves the menu open.
+ */
 @Composable
 private fun FolderMenu(compose: ComposeChat, options: NewSessionOptions, close: () -> Unit) {
     val newSession = compose.newSession
     val customTitle = stringResource(R.string.machine_launcher_enter_custom_path)
     val customPlaceholder = stringResource(R.string.home_dock_custom_path_placeholder)
     val ok = stringResource(R.string.common_ok)
-    HappyMenuSection(stringResource(R.string.home_dock_picker_projects))
-    for (option in options.projects) {
-        MenuOption(NewSessionPage.Project, option, option.key == options.project?.key) { page, key ->
+    val (pinned, recent) = options.projects.partition { it.pinned }
+    @Composable
+    fun Folder(option: PickerOption) {
+        FolderOption(option, option.key == options.project?.key, onPin = { newSession.togglePin(option.key) }) { key ->
             close()
-            newSession.select(page, key)
+            newSession.select(NewSessionPage.Project, key)
         }
     }
+    if (pinned.isNotEmpty()) {
+        HappyMenuSection(stringResource(R.string.home_dock_picker_pinned))
+        pinned.forEach { Folder(it) }
+    }
+    // With every folder pinned there is no Projects heading over nothing.
+    if (recent.isNotEmpty() || pinned.isEmpty()) HappyMenuSection(stringResource(R.string.home_dock_picker_projects))
+    recent.forEach { Folder(it) }
     HappyMenuItem(
         label = customTitle,
         onClick = {
@@ -754,6 +773,41 @@ private fun BotNameRow(compose: ComposeChat, name: String, enabled: Boolean, onR
         onReturn = onReturn,
         problem = compose.nameProblem,
         modifier = Modifier.focusRequester(focus),
+    )
+}
+
+/** A folder row: [MenuOption]'s, with its pin at the end and the chosen one's check before it. */
+@Composable
+private fun FolderOption(option: PickerOption, selected: Boolean, onPin: () -> Unit, onPick: (String) -> Unit) {
+    val colors = HappyTheme.colors
+    val pinLabel = stringResource(if (option.pinned) R.string.home_dock_unpin else R.string.home_dock_pin)
+    HappyMenuItem(
+        label = option.name,
+        onClick = { onPick(option.key) },
+        supporting = option.description,
+        selected = selected,
+        enabled = !option.disabled,
+        trailing = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (selected) Icon(Ionicon.Checkmark, MenuSpec.check, colors.text)
+                Box(
+                    Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .clickable(onClickLabel = pinLabel, role = Role.Button, onClick = onPin)
+                        .semantics { contentDescription = pinLabel }
+                        .testTag(ComposeChatTags.pin(option.key)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        if (option.pinned) Ionicon.Pin else Ionicon.PinOutline,
+                        MenuSpec.check,
+                        if (option.pinned) colors.text else colors.textSecondary,
+                    )
+                }
+            }
+        },
+        modifier = Modifier.testTag(ComposeChatTags.option(NewSessionPage.Project, option.key)),
     )
 }
 
