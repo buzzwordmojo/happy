@@ -671,6 +671,11 @@ private fun StatusDot(color: Color) {
  * order they were pinned, then the rest most recent first, and a custom
  * path. Each folder's pin (40 dp, at the row's end, before the chosen
  * one's check) pins or unpins it and leaves the menu open.
+ *
+ * The rows hold the order and sections they opened with: a pin fills or
+ * empties at once, and the folder moves the next time the menu opens.
+ * Moving it now would slide rows under the finger, and a Pinned heading
+ * growing the menu makes the popup jump to the other side of its row.
  */
 @Composable
 private fun FolderMenu(compose: ComposeChat, options: NewSessionOptions, close: () -> Unit) {
@@ -678,7 +683,12 @@ private fun FolderMenu(compose: ComposeChat, options: NewSessionOptions, close: 
     val customTitle = stringResource(R.string.machine_launcher_enter_custom_path)
     val customPlaceholder = stringResource(R.string.home_dock_custom_path_placeholder)
     val ok = stringResource(R.string.common_ok)
-    val (pinned, recent) = options.projects.partition { it.pinned }
+    val opened = remember { options.projects.map { it.key } to options.projects.filter { it.pinned }.mapTo(HashSet()) { it.key } }
+    val (openedOrder, openedPinned) = opened
+    val byKey = options.projects.associateBy { it.key }
+    // A folder that arrived while open (its computer's chats coming in) goes at the end.
+    val rows = openedOrder.mapNotNull(byKey::get) + options.projects.filter { it.key !in openedOrder }
+    val (pinned, recent) = rows.partition { it.key in openedPinned }
     @Composable
     fun Folder(option: PickerOption) {
         FolderOption(option, option.key == options.project?.key, onPin = { newSession.togglePin(option.key) }) { key ->
